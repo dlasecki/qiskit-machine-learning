@@ -29,6 +29,8 @@ class QbmNeuralNetwork(ABC, NeuralNetwork):
     def __init__(
             self,
             gibbs_state_builder: GibbsStateBuilder,
+            temperature: float,  # TODO hide this as a class field in GibbsStateBuilder?
+            visible_units: List[int],
             param_hamiltonian: OperatorBase,
             num_inputs: int,
             num_weights: int,
@@ -39,6 +41,8 @@ class QbmNeuralNetwork(ABC, NeuralNetwork):
             backend: Optional[Union[BaseBackend, QuantumInstance]] = None,
     ):
         self._gibbs_state_builder = gibbs_state_builder
+        self._temperature = temperature
+        self._visible_units = visible_units
         self._param_hamiltonian = (
             param_hamiltonian  # TODO is it necessary? gibbs state builder -> qite has a hamiltonian
         )
@@ -49,7 +53,7 @@ class QbmNeuralNetwork(ABC, NeuralNetwork):
         self._input_gradients = input_gradients
         self._params = init_params
         self._backend = backend
-        self._gibbs_state = None
+        self._gibbs_state_sampler = None
 
     @property
     def parameter_values(self):
@@ -61,45 +65,52 @@ class QbmNeuralNetwork(ABC, NeuralNetwork):
         """
         return self._params
 
-    def _forward_generative(self, weights: Optional[np.ndarray]
-    ) -> Union[np.ndarray, SparseArray]:
+    def _forward_generative(self, weights: Optional[np.ndarray]) -> Union[np.ndarray, SparseArray]:
 
-        # gibbs_state_bound_ansatz = self._gibbs_state.gibbs_state_function_bound_ansatz()
-        # hamiltonian_params = self._param_hamiltonian.ordered_parameters
-        # hamiltonian_param_dict = dict(zip(hamiltonian_params, weights))
-        # gibbs_state_bound = gibbs_state_bound_ansatz.assign_parameters(hamiltonian_param_dict)
-        # TODO sample from Gibbs state to build p_v_qbm
-        p_v_qbm = self.calc_p_v_qbm(self._gibbs_state)  # np.ndarray
+        # TODO remove this method?
+        return self.calc_p_v_qbm()
 
+    def calc_p_v_qbm(self) -> np.ndarray:
+        """Calculates a probability sample from a provided Gibbs state sampler including hidden
+        units."""
+        sample_with_hidden_units = self._gibbs_state_sampler.sample(self._backend)
+        p_v_qbm = self._remove_hidden_units(sample_with_hidden_units)
         return p_v_qbm
 
-    def calc_p_v_qbm(self, gibbs_state_bound)->np.ndarray:
+    def _remove_hidden_units(self, sample_with_hidden_units: np.ndarray) -> np.ndarray:
+        """Removes hidden units from a provided probability sample and returns an adjusted
+        probability sample over visible units."""
         pass
 
     # TODO move to child class, qbm_generative_nn
     def _forward(
             self, input_data: Optional[np.ndarray], weights: Optional[np.ndarray]
     ) -> Union[np.ndarray, SparseArray]:
-        # TODO think where to pass temperature
-        temperature = None
-        self._gibbs_state = self._gibbs_state_builder.build(self._param_hamiltonian, temperature)
+        # generative does not use input_data
+        hamiltonian_param_dict = dict(zip(self._param_hamiltonian.ordered_parameters, weights))
+        self._gibbs_state_sampler = self._gibbs_state_builder.build(
+            self._param_hamiltonian, self._temperature, hamiltonian_param_dict
+        )
         p_v_qbm = self._forward_generative(weights)
 
         return p_v_qbm
 
     def _backward(
             self, input_data: Optional[np.ndarray], weights: Optional[np.ndarray]
-    ) -> Tuple[Optional[Union[np.ndarray, SparseArray]], Optional[Union[np.ndarray, SparseArray]],]:
+    ) -> Dict[Parameter, Union[complex, float]]:
 
-        # TODO should not come out bound, will bind here with weights
-        # OR
-        # build a Gibbs state given weights above as thetas and then invoke
-        # calc_hamiltonian_gradients on this gibbs state.
-        gibbs_ham_gradients = gibbs_state.calc_hamiltonian_gradients(
-            gradient_params, measurement_op, gradient_method
+        # TODO deal with input_data
+        hamiltonian_param_dict = dict(zip(self._param_hamiltonian.ordered_parameters, weights))
+        self._gibbs_state_sampler = self._gibbs_state_builder.build(
+            self._param_hamiltonian, self._temperature, hamiltonian_param_dict
+        )
+        gibbs_ham_gradients = self._gibbs_state_sampler.calc_hamiltonian_gradients(
+            self._backend, self._gradient_method
         )
 
-    def _calc_p_v_data(self) -> np.ndarray:
+        return gibbs_ham_gradients
+
+    def _calc_p_v_from_data(self) -> np.ndarray:
         pass
 
     # TODO move to child classes, will use existing LossFunction impl
