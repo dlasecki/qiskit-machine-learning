@@ -9,23 +9,20 @@
 # Any modifications or derivative works of this code must retain this
 # copyright notice, and modified files need to carry a notice indicating
 # that they have been altered from the originals.
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import Union, List, Optional, Tuple, Dict
 
 import numpy as np
-from qiskit.algorithms.optimizers import Optimizer
 from qiskit.circuit import Parameter
-from qiskit.opflow import OperatorBase, StateFn
+from qiskit.opflow import OperatorBase
 from qiskit.providers import BaseBackend
 from qiskit.utils import QuantumInstance
 
 from qiskit_machine_learning.algorithms.objective_functions import SparseArray
-from qiskit_machine_learning.neural_networks import NeuralNetwork
-
-from qiskit_machine_learning.utils.loss_functions import Loss, CrossEntropyLoss
+from qiskit_machine_learning.neural_networks import SamplingNeuralNetwork
 
 
-class QbmNeuralNetwork(ABC, NeuralNetwork):
+class QbmNN(ABC, SamplingNeuralNetwork):
     def __init__(
             self,
             gibbs_state_builder: GibbsStateBuilder,
