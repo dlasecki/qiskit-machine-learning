@@ -26,7 +26,7 @@ from qiskit_machine_learning.utils.loss_functions import CrossEntropyLoss, Loss
 from qiskit_machine_learning.neural_networks.qbm.qbm_nn import QbmNN
 
 
-class QbmGenerativeNN(ABC, QbmNN, TrainableModel):
+class QbmDiscriminativeNN(ABC, QbmNN):
     def __init__(
             self,
             gibbs_state_builder: GibbsStateBuilder,
@@ -52,8 +52,29 @@ class QbmGenerativeNN(ABC, QbmNN, TrainableModel):
     def fit(self, X: np.ndarray, y: np.ndarray) -> "TrainableModel":
         pass
 
-    def _calc_p_v_from_data(self, train_data) -> np.ndarray:
-        probs = discretize_and_truncate(train_data, return_prob=True)
+    # TODO this is discriminative!
+    def _calc_p_v_from_data(self, train_data_items) -> np.ndarray:
+        temp_train_data_prob = []
+        for j, item in enumerate(train_data_items):
+            temp = list(np.zeros(2 ** len(target_qubits)))
+            if item in temp_data_items:
+                index = temp_data_items.index(item)
+                temp_train_data_prob[index] = [x * temp_data_counts[index] for x in
+                                               temp_train_data_prob[index]]
+                temp_train_data_prob[index][train_items_labels[j]] = train_data_counts[j]
+                temp_train_data_prob[index] = [x / sum(temp_train_data_prob[index])
+                                               for x in temp_train_data_prob[index]]
+                temp_data_counts[index] += train_data_counts[j]
+            else:
+                temp_data_items.append(item)
+                temp_data_counts.append(train_data_counts[j])
+                temp[train_items_labels[j]] = 1.
+                temp_train_data_prob.append(temp)
+
+        self._train_data_items = temp_data_items
+        self._train_data_prob = np.array(temp_train_data_prob)
+
+        self._train_items_prob = np.array(temp_data_counts) / len(self._train_data)
 
     # # TODO move to child classes, will use existing LossFunction impl
     # def calc_obj_fun_grad(
